@@ -1,7 +1,7 @@
 package App::BashCompletionF;
 
 our $DATE = '2014-10-31'; # DATE
-our $VERSION = '0.02'; # VERSION
+our $VERSION = '0.03'; # VERSION
 
 use 5.010001;
 use strict;
@@ -202,7 +202,7 @@ sub _delete_entries {
         }
 
         next unless $remove;
-        say "Removing " . join(", ", @{$parseres->[2]{names}});
+        say "Removing from bash-completion-f: " . join(", ", @{$parseres->[2]{names}});
         my $delres = Text::Fragment::delete_fragment(
             text=>$content, id=>$entry->{id});
         next if $delres->[0] == 304;
@@ -394,7 +394,7 @@ sub _add_pc {
 
                 $prog =~ $Text::Fragment::re_id or next;
 
-                say "Adding $prog";
+                say "Adding to bash-completion-f: $prog";
                 push @progs, $prog;
                 $added++;
                 $names{$prog}++;
@@ -461,7 +461,7 @@ App::BashCompletionF - Backend for bash-completion-f script
 
 =head1 VERSION
 
-This document describes version 0.02 of App::BashCompletionF (from Perl distribution App-BashCompletionF), released on 2014-10-31.
+This document describes version 0.03 of App::BashCompletionF (from Perl distribution App-BashCompletionF), released on 2014-10-31.
 
 =head1 FUNCTIONS
 

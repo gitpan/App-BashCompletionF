@@ -2,7 +2,7 @@ NAME
     App::BashCompletionF - Backend for bash-completion-f script
 
 VERSION
-    This document describes version 0.02 of App::BashCompletionF (from Perl
+    This document describes version 0.03 of App::BashCompletionF (from Perl
     distribution App-BashCompletionF), released on 2014-10-31.
 
 FUNCTIONS
