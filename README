@@ -1,14 +1,55 @@
 NAME
-    App::BashCompletionF - Backend for bash-completion-f
+    App::BashCompletionF - Backend for bash-completion-f script
 
 VERSION
-    This document describes version 0.01 of App::BashCompletionF (from Perl
+    This document describes version 0.02 of App::BashCompletionF (from Perl
     distribution App-BashCompletionF), released on 2014-10-31.
 
 FUNCTIONS
   add_all_pc(%args) -> [status, msg, result, meta]
-    Search PATH for scripts that use Perinci::CmdLine and add completion for
-    those.
+    Find all scripts that use Perinci::CmdLine in specified dirs (or PATH)
+    and add completion entries for them.
+
+    Arguments ('*' denotes required arguments):
+
+    *   dir => *array*
+
+        Dir and file name(s) to search.
+
+    *   file => *str*
+
+        Use alternate location for the bash-completion-f file.
+
+        By default, the "complete" scripts are put in a file either in
+        "/etc/bash-completion-f" (if running as root) or
+        "~/.bash-completion-f" (if running as normal user). This option sets
+        another location.
+
+    Return value:
+
+    Returns an enveloped result (an array).
+
+    First element (status) is an integer containing HTTP status code (200
+    means OK, 4xx caller error, 5xx function error). Second element (msg) is
+    a string containing error message, or 'OK' if status is 200. Third
+    element (result) is optional, the actual result. Fourth element (meta)
+    is called result metadata and is optional, a hash that contains extra
+    information.
+
+     (any)
+
+  add_entries_pc(%args) -> [status, msg, result, meta]
+    Add completion entries for Perinci::CmdLine-based CLI programs.
+
+    This is a shortcut for "add_entry". Doing:
+
+     % bash-completion-f add-pc foo bar baz
+
+    will be the same as:
+
+     % bash-completion-f add --id foo 'complete -C foo foo'
+     % bash-completion-f add --id bar 'complete -C bar bar'
+     % bash-completion-f add --id baz 'complete -C baz baz'
 
     Arguments ('*' denotes required arguments):
 
@@ -20,6 +61,10 @@ FUNCTIONS
         "/etc/bash-completion-f" (if running as root) or
         "~/.bash-completion-f" (if running as normal user). This option sets
         another location.
+
+    *   program* => *array*
+
+        Program name(s) to add.
 
     Return value:
 
@@ -55,46 +100,6 @@ FUNCTIONS
     *   id* => *str*
 
         Entry ID, for marker (usually command name).
-
-    Return value:
-
-    Returns an enveloped result (an array).
-
-    First element (status) is an integer containing HTTP status code (200
-    means OK, 4xx caller error, 5xx function error). Second element (msg) is
-    a string containing error message, or 'OK' if status is 200. Third
-    element (result) is optional, the actual result. Fourth element (meta)
-    is called result metadata and is optional, a hash that contains extra
-    information.
-
-     (any)
-
-  add_entry_pc(%args) -> [status, msg, result, meta]
-    Add a completion entry (shortcut for Perinci::CmdLine-based CLI
-    programs).
-
-    This is a shortcut for "add_entry". Doing:
-
-     % bash-completion-f add-pc foo
-
-    will be the same as:
-
-     % bash-completion-f add --id foo 'complete -C foo foo'
-
-    Arguments ('*' denotes required arguments):
-
-    *   file => *str*
-
-        Use alternate location for the bash-completion-f file.
-
-        By default, the "complete" scripts are put in a file either in
-        "/etc/bash-completion-f" (if running as root) or
-        "~/.bash-completion-f" (if running as normal user). This option sets
-        another location.
-
-    *   program* => *str*
-
-        Program name to add.
 
     Return value:
 
@@ -167,7 +172,9 @@ FUNCTIONS
 
      (any)
 
-  remove_entry(%args) -> [status, msg, result, meta]
+  remove_all_entries(%args) -> [status, msg, result, meta]
+    Remove all entries.
+
     Arguments ('*' denotes required arguments):
 
     *   file => *str*
@@ -179,9 +186,34 @@ FUNCTIONS
         "~/.bash-completion-f" (if running as normal user). This option sets
         another location.
 
-    *   id* => *str*
+    Return value:
 
-        Entry ID, for marker (usually command name).
+    Returns an enveloped result (an array).
+
+    First element (status) is an integer containing HTTP status code (200
+    means OK, 4xx caller error, 5xx function error). Second element (msg) is
+    a string containing error message, or 'OK' if status is 200. Third
+    element (result) is optional, the actual result. Fourth element (meta)
+    is called result metadata and is optional, a hash that contains extra
+    information.
+
+     (any)
+
+  remove_entries(%args) -> [status, msg, result, meta]
+    Arguments ('*' denotes required arguments):
+
+    *   file => *str*
+
+        Use alternate location for the bash-completion-f file.
+
+        By default, the "complete" scripts are put in a file either in
+        "/etc/bash-completion-f" (if running as root) or
+        "~/.bash-completion-f" (if running as normal user). This option sets
+        another location.
+
+    *   id* => *array*
+
+        Entry ID(s).
 
     Return value:
 

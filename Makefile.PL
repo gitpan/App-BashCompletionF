@@ -10,7 +10,7 @@ use ExtUtils::MakeMaker 6.30;
 
 
 my %WriteMakefileArgs = (
-  "ABSTRACT" => "Backend for bash-completion-f",
+  "ABSTRACT" => "Backend for bash-completion-f script",
   "AUTHOR" => "perlancar <perlancar\@cpan.org>",
   "CONFIGURE_REQUIRES" => {
     "ExtUtils::MakeMaker" => "6.30"
@@ -26,9 +26,11 @@ my %WriteMakefileArgs = (
     "File::Which" => 0,
     "Parse::CommandLine" => 0,
     "Perinci::CmdLine::Any" => 0,
+    "Perinci::Object" => "0.18",
     "Perinci::Sub::Util" => 0,
     "Rinci" => "v1.1.69",
-    "Text::Fragment" => "0.03"
+    "Text::Fragment" => "0.03",
+    "experimental" => 0
   },
   "TEST_REQUIRES" => {
     "File::Spec" => 0,
@@ -36,7 +38,7 @@ my %WriteMakefileArgs = (
     "IPC::Open3" => 0,
     "Test::More" => 0
   },
-  "VERSION" => "0.01",
+  "VERSION" => "0.02",
   "test" => {
     "TESTS" => "t/*.t"
   }
@@ -51,10 +53,12 @@ my %FallbackPrereqs = (
   "IPC::Open3" => 0,
   "Parse::CommandLine" => 0,
   "Perinci::CmdLine::Any" => 0,
+  "Perinci::Object" => "0.18",
   "Perinci::Sub::Util" => 0,
   "Rinci" => "v1.1.69",
   "Test::More" => 0,
-  "Text::Fragment" => "0.03"
+  "Text::Fragment" => "0.03",
+  "experimental" => 0
 );
 
 

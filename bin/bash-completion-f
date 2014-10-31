@@ -1,7 +1,7 @@
 #!perl
 
 our $DATE = '2014-10-31'; # DATE
-our $VERSION = '0.01'; # VERSION
+our $VERSION = '0.02'; # VERSION
 
 use 5.010;
 use strict;
@@ -14,9 +14,10 @@ Perinci::CmdLine::Any->new(
     url => $urlprefix,
     subcommands => {
         add          => {url=>"${urlprefix}add_entry"},
-        'add-pc'     => {url=>"${urlprefix}add_entry_pc"},
+        'add-pc'     => {url=>"${urlprefix}add_entries_pc"},
         'add-all-pc' => {url=>"${urlprefix}add_all_pc"},
-        remove       => {url=>"${urlprefix}remove_entry"},
+        remove       => {url=>"${urlprefix}remove_entries"},
+        'remove-all' => {url=>"${urlprefix}remove_all_entries"},
         list         => {url=>"${urlprefix}list_entries"},
         clean        => {url=>"${urlprefix}clean_entries"},
     },
@@ -37,7 +38,7 @@ bash-completion-f - Manage bash completion commands/scripts
 
 =head1 VERSION
 
-This document describes version 0.01 of bash-completion-f (from Perl distribution App-BashCompletionF), released on 2014-10-31.
+This document describes version 0.02 of bash-completion-f (from Perl distribution App-BashCompletionF), released on 2014-10-31.
 
 =head1 SYNOPSIS
 
@@ -131,6 +132,12 @@ you say:
 it is equivalent to:
 
  % bash-completion-f add --id foo 'complete -C foo foo'
+
+=head1 ENVIRONMENT
+
+=head2 DEBUG => bool
+
+Set to true to enable debugging messages.
 
 =head1 SEE ALSO
 

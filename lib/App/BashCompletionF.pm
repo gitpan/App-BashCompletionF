@@ -1,7 +1,7 @@
 package App::BashCompletionF;
 
 our $DATE = '2014-10-31'; # DATE
-our $VERSION = '0.01'; # VERSION
+our $VERSION = '0.02'; # VERSION
 
 use 5.010001;
 use strict;
@@ -9,10 +9,18 @@ use warnings;
 
 use File::Slurp::Tiny qw();
 use List::Util qw(first);
+use Perinci::Object;
 use Perinci::Sub::Util qw(err);
 use Text::Fragment qw();
 
 our %SPEC;
+
+my $DEBUG = $ENV{DEBUG};
+
+$SPEC{':package'} = {
+    v => 1.1,
+    summary => 'Manipulate bash-completion-f file which contains completion scripts',
+};
 
 sub _f_path {
     if ($>) {
@@ -57,11 +65,36 @@ my %arg_id = (id => {
     pos     => 0,
 });
 
+my %arg_ids = (id => {
+    summary => 'Entry ID(s)',
+    schema  => ['array*' => {
+        of      => ['str*', {match => $Text::Fragment::re_id}],
+        min_len => 1,
+    }],
+    req     => 1,
+    pos     => 0,
+    greedy  => 1,
+});
+
 my %arg_program = (program => {
-    summary => 'Program name to add',
-    schema => ['str*', {match=>$Text::Fragment::re_id}],
+    summary => 'Program name(s) to add',
+    schema => ['array*' => {
+        of => ['str*', {match=>$Text::Fragment::re_id}], # XXX strip dir first before matching
+        min_len => 1,
+    }],
     req => 1,
     pos => 0,
+    greedy => 1,
+});
+
+my %arg_dir = (dir => {
+    summary => 'Dir and file name(s) to search',
+    schema => ['array*' => {
+        of => ['str*'], # XXX strip dir first before matching
+        min_len => 1,
+    }],
+    pos => 0,
+    greedy => 1,
 });
 
 $SPEC{add_entry} = {
@@ -108,18 +141,20 @@ sub add_entry {
     [200];
 }
 
-$SPEC{add_entry_pc} = {
+$SPEC{add_entries_pc} = {
     v => 1.1,
-    summary => 'Add a completion entry (shortcut for Perinci::CmdLine-based CLI programs)',
+    summary => 'Add completion entries for Perinci::CmdLine-based CLI programs',
     description => <<'_',
 
 This is a shortcut for `add_entry`. Doing:
 
-    % bash-completion-f add-pc foo
+    % bash-completion-f add-pc foo bar baz
 
 will be the same as:
 
     % bash-completion-f add --id foo 'complete -C foo foo'
+    % bash-completion-f add --id bar 'complete -C bar bar'
+    % bash-completion-f add --id baz 'complete -C baz baz'
 
 _
     args => {
@@ -127,51 +162,94 @@ _
         %arg_file,
     },
 };
-sub add_entry_pc {
+sub add_entries_pc {
     my %args = @_;
-    my $prog = $args{program};
 
-    # XXX schema (coz when we're not using P::C there's no schema validation)
-    $prog =~ $Text::Fragment::re_id or
-        return [400, "Invalid syntax for 'program', ".
-                    "please don't use strange characters"];
-
-    add_entry(
-        id => $prog,
-        content => "complete -C '$prog' '$prog'",
-    );
+    _add_pc({progs=>delete($args{program})}, %args);
 }
 
-$SPEC{remove_entry} = {
-    v => 1.1,
-    summary => '',
-    args => {
-        %arg_id,
-        %arg_file,
-    },
-};
-sub remove_entry {
+sub _delete_entries {
+    my $opts = shift;
+
     my %args = @_;
-
-    my $id = $args{id};
-
-    # XXX schema (coz when we're not using P::C there's no schema validation)
-    $id =~ $Text::Fragment::re_id or
-        return [400, "Invalid syntax for 'id', please use word only"];
-
     my $res = _read_parse_f($args{file});
     return err("Can't read entries", $res) if $res->[0] != 200;
 
-    my $delres = Text::Fragment::delete_fragment(
-        text=>$res->[2]{content}, id=>$id);
-    return err("Can't delete", $delres) if $delres->[0] !~ /200|304/;
+    my $envres = envresmulti();
 
-    if ($delres->[0] == 200) {
-        my $writeres = _write_f($args{file}, $delres->[2]{text});
+    my $content = $res->[2]{content};
+    my $deleted;
+    for my $entry (@{ $res->[2]{parsed} }) {
+        my $parseres = _parse_entry($entry->{payload});
+        unless ($parseres->[0] == 200) {
+            warn "Can't parse 'complete' command for entry '$entry->{id}': ".
+                "$parseres->[1], skipped\n";
+            next;
+        }
+        my $remove;
+        if ($opts->{criteria}) {
+            $remove = $opts->{criteria}->($parseres->[2]{names});
+        } elsif ($opts->{ids}) {
+            use experimental 'smartmatch';
+            for (@{ $parseres->[2]{names} }) {
+                if ($_ ~~ @{ $opts->{ids} }) {
+                    $remove++;
+                    last;
+                }
+            }
+        } else {
+            die "BUG: no criteria nor ids are given";
+        }
+
+        next unless $remove;
+        say "Removing " . join(", ", @{$parseres->[2]{names}});
+        my $delres = Text::Fragment::delete_fragment(
+            text=>$content, id=>$entry->{id});
+        next if $delres->[0] == 304;
+        $envres->add_result($delres->[0], $delres->[1],
+                            {item_id=>$entry->{id}});
+        next if $delres->[0] != 200;
+        $deleted++;
+        $content = $delres->[2]{text};
+    }
+
+    if ($deleted) {
+        my $writeres = _write_f($args{file}, $content);
         return err("Can't write", $writeres) if $writeres->[0] != 200;
     }
 
-    [200];
+    $envres->as_struct;
+}
+
+$SPEC{remove_entries} = {
+    v => 1.1,
+    summary => '',
+    args => {
+        %arg_ids,
+        %arg_file,
+    },
+};
+sub remove_entries {
+    my %args = @_;
+
+    _delete_entries(
+        {ids=>delete($args{id})},
+        %args
+    );
+}
+
+$SPEC{remove_all_entries} = {
+    v => 1.1,
+    summary => 'Remove all entries',
+    description => <<'_',
+_
+    args => {
+        %arg_file,
+    },
+};
+sub remove_all_entries {
+    my %args = @_;
+    _delete_entries({criteria=>sub{1}}, %args);
 }
 
 $SPEC{list_entries} = {
@@ -252,56 +330,24 @@ sub clean_entries {
     require File::Which;
 
     my %args = @_;
-
-    my $res = _read_parse_f($args{file});
-    return err("Can't read entries", $res) if $res->[0] != 200;
-
-    my $content = $res->[2]{content};
-    my $deleted;
-    for my $entry (@{ $res->[2]{parsed} }) {
-        my $parseres = _parse_entry($entry->{payload});
-        unless ($parseres->[0] == 200) {
-            warn "Can't parse 'complete' command for entry '$entry->{id}': ".
-                "$parseres->[1], skipped\n";
-            next;
-        }
-        # remove if none of the names in complete command are in PATH
-        my $found;
-        for my $name (@{ $parseres->[2]{names} }) {
-            if (File::Which::which($name)) {
-                $found++; last;
-            }
-        }
-        next if $found;
-        say join(", ", @{$parseres->[2]{names}})." not found in PATH, ".
-            "removing entry $entry->{id}";
-        my $delres = Text::Fragment::delete_fragment(
-            text=>$content, id=>$entry->{id});
-        return err("Can't delete entry $entry->{id}", $delres)
-            if $delres->[0] != 200;
-        $deleted++;
-        $content = $delres->[2]{text};
-    }
-
-    if ($deleted) {
-        my $writeres = _write_f($args{file}, $content);
-        return err("Can't write", $writeres) if $writeres->[0] != 200;
-    }
-
-    [200];
+    _delete_entries(
+        {criteria => sub {
+             my $names = shift;
+             # remove if none of the names in complete command are in PATH
+             for my $name (@{ $names }) {
+                 if (File::Which::which($name)) {
+                     return 0;
+                 }
+             }
+             return 1;
+         }},
+        %args,
+    );
 }
 
-$SPEC{add_all_pc} = {
-    v => 1.1,
-    summary => 'Search PATH for scripts that use Perinci::CmdLine '.
-        'and add completion for those',
-    description => <<'_',
-_
-    args => {
-        %arg_file,
-    },
-};
-sub add_all_pc {
+sub _add_pc {
+    my $opts = shift;
+
     my %args = @_;
 
     my $res = _read_parse_f($args{file});
@@ -322,40 +368,58 @@ sub add_all_pc {
     }
 
     my $added;
-    for my $dir (split /:/, $ENV{PATH}) {
-        opendir my($dh), $dir or next;
-        #say "D:searching $dir";
-        for my $prog (readdir $dh) {
-            (-f "$dir/$prog") && (-x _) or next;
-            $names{$prog} and next;
+    my @progs;
 
-            # skip non-scripts
-            open my($fh), "<", "$dir/$prog" or next;
-            read $fh, my($buf), 2; $buf eq '#!' or next;
-            # skip non perl
-            my $shebang = <$fh>; $shebang =~ /perl/ or next;
-            my $found;
-            # skip unless we found something like 'use Perinci::CmdLine'
-            while (<$fh>) {
-                if (/^\s*(use|require)\s+Perinci::CmdLine(|::Any|::Lite)/) {
-                    $found++; last;
+    if ($opts->{dirs}) {
+        for my $dir (@{ $opts->{dirs} }) {
+            opendir my($dh), $dir or next;
+            say "DEBUG:Searching $dir ..." if $DEBUG;
+            for my $prog (readdir $dh) {
+                next if $prog eq '.' || $prog eq '..';
+                (-f "$dir/$prog") && (-x _) or do { say "DEBUG:Skipping $prog (not an executable)" if $DEBUG; next };
+                $names{$prog} and next;
+
+                open my($fh), "<", "$dir/$prog" or do { say "DEBUG:Skipping $prog (can't read)" if $DEBUG; next };
+                read $fh, my($buf), 2; $buf eq '#!' or next;
+                # skip non perl
+                my $shebang = <$fh>; $shebang =~ /perl/ or do { say "DEBUG:Skipping $prog (not Perl script)" if $DEBUG; next };
+                my $found;
+                # skip unless we found something like 'use Perinci::CmdLine'
+                while (<$fh>) {
+                    if (/^\s*(use|require)\s+Perinci::CmdLine(|::Any|::Lite)/) {
+                        $found++; last;
+                    }
                 }
+                $found or do { say "DEBUG:Skipping $prog (no usage of Perinci::CmdLine)" if $DEBUG; next };
+
+                $prog =~ $Text::Fragment::re_id or next;
+
+                say "Adding $prog";
+                push @progs, $prog;
+                $added++;
+                $names{$prog}++;
             }
-            next unless $found;
-
-            $prog =~ $Text::Fragment::re_id or next;
-
-            #say "D:$dir/$prog is a Perinci::CmdLine program";
-
-            my $insres = Text::Fragment::insert_fragment(
-                text=>$content, id=>$prog,
-                payload=>"complete -C '$prog' '$prog'");
-            return err("Can't add entry $prog", $insres)
-                if $insres->[0] != 200;
+        }
+    } elsif ($opts->{progs}) {
+        for my $prog (@{ $opts->{progs} }) {
+            $prog =~ s!.+/!!;
+            $names{$prog} and next;
+            push @progs, $prog;
             $added++;
             $names{$prog}++;
-            $content = $insres->[2]{text};
         }
+    } else {
+        die "BUG: no progs or dirs given";
+    }
+
+    my $envres = envresmulti();
+    for my $prog (@progs) {
+        my $insres = Text::Fragment::insert_fragment(
+            text=>$content, id=>$prog,
+            payload=>"complete -C '$prog' '$prog'");
+        $envres->add_result($insres->[0], $insres->[1], {item_id=>$prog});
+        next unless $insres->[0] == 200;
+        $content = $insres->[2]{text};
     }
 
     if ($added) {
@@ -363,11 +427,27 @@ sub add_all_pc {
         return err("Can't write", $writeres) if $writeres->[0] != 200;
     }
 
-    [200];
+    $envres->as_struct;
+}
+
+$SPEC{add_all_pc} = {
+    v => 1.1,
+    summary => 'Find all scripts that use Perinci::CmdLine in specified dirs (or PATH)' .
+        ' and add completion entries for them',
+    description => <<'_',
+_
+    args => {
+        %arg_file,
+        %arg_dir,
+    },
+};
+sub add_all_pc {
+    my %args = @_;
+    _add_pc({dirs => delete($args{dir}) // [split /:/, $ENV{PATH}]}, %args);
 }
 
 1;
-# ABSTRACT: Backend for bash-completion-f
+# ABSTRACT: Backend for bash-completion-f script
 
 __END__
 
@@ -377,18 +457,64 @@ __END__
 
 =head1 NAME
 
-App::BashCompletionF - Backend for bash-completion-f
+App::BashCompletionF - Backend for bash-completion-f script
 
 =head1 VERSION
 
-This document describes version 0.01 of App::BashCompletionF (from Perl distribution App-BashCompletionF), released on 2014-10-31.
+This document describes version 0.02 of App::BashCompletionF (from Perl distribution App-BashCompletionF), released on 2014-10-31.
 
 =head1 FUNCTIONS
 
 
 =head2 add_all_pc(%args) -> [status, msg, result, meta]
 
-Search PATH for scripts that use Perinci::CmdLine and add completion for those.
+Find all scripts that use Perinci::CmdLine in specified dirs (or PATH) and add completion entries for them.
+
+Arguments ('*' denotes required arguments):
+
+=over 4
+
+=item * B<dir> => I<array>
+
+Dir and file name(s) to search.
+
+=item * B<file> => I<str>
+
+Use alternate location for the bash-completion-f file.
+
+By default, the C<complete> scripts are put in a file either in
+C</etc/bash-completion-f> (if running as root) or C<~/.bash-completion-f> (if
+running as normal user). This option sets another location.
+
+=back
+
+Return value:
+
+Returns an enveloped result (an array).
+
+First element (status) is an integer containing HTTP status code
+(200 means OK, 4xx caller error, 5xx function error). Second element
+(msg) is a string containing error message, or 'OK' if status is
+200. Third element (result) is optional, the actual result. Fourth
+element (meta) is called result metadata and is optional, a hash
+that contains extra information.
+
+ (any)
+
+
+=head2 add_entries_pc(%args) -> [status, msg, result, meta]
+
+Add completion entries for Perinci::CmdLine-based CLI programs.
+
+This is a shortcut for C<add_entry>. Doing:
+
+ % bash-completion-f add-pc foo bar baz
+
+will be the same as:
+
+ % bash-completion-f add --id foo 'complete -C foo foo'
+ % bash-completion-f add --id bar 'complete -C bar bar'
+ % bash-completion-f add --id baz 'complete -C baz baz'
 
 Arguments ('*' denotes required arguments):
 
@@ -401,6 +527,10 @@ Use alternate location for the bash-completion-f file.
 By default, the C<complete> scripts are put in a file either in
 C</etc/bash-completion-f> (if running as root) or C<~/.bash-completion-f> (if
 running as normal user). This option sets another location.
+
+=item * B<program>* => I<array>
+
+Program name(s) to add.
 
 =back
 
@@ -441,50 +571,6 @@ running as normal user). This option sets another location.
 =item * B<id>* => I<str>
 
 Entry ID, for marker (usually command name).
-
-=back
-
-Return value:
-
-Returns an enveloped result (an array).
-
-First element (status) is an integer containing HTTP status code
-(200 means OK, 4xx caller error, 5xx function error). Second element
-(msg) is a string containing error message, or 'OK' if status is
-200. Third element (result) is optional, the actual result. Fourth
-element (meta) is called result metadata and is optional, a hash
-that contains extra information.
-
- (any)
-
-
-=head2 add_entry_pc(%args) -> [status, msg, result, meta]
-
-Add a completion entry (shortcut for Perinci::CmdLine-based CLI programs).
-
-This is a shortcut for C<add_entry>. Doing:
-
- % bash-completion-f add-pc foo
-
-will be the same as:
-
- % bash-completion-f add --id foo 'complete -C foo foo'
-
-Arguments ('*' denotes required arguments):
-
-=over 4
-
-=item * B<file> => I<str>
-
-Use alternate location for the bash-completion-f file.
-
-By default, the C<complete> scripts are put in a file either in
-C</etc/bash-completion-f> (if running as root) or C<~/.bash-completion-f> (if
-running as normal user). This option sets another location.
-
-=item * B<program>* => I<str>
-
-Program name to add.
 
 =back
 
@@ -570,7 +656,9 @@ that contains extra information.
  (any)
 
 
-=head2 remove_entry(%args) -> [status, msg, result, meta]
+=head2 remove_all_entries(%args) -> [status, msg, result, meta]
+
+Remove all entries.
 
 Arguments ('*' denotes required arguments):
 
@@ -584,9 +672,39 @@ By default, the C<complete> scripts are put in a file either in
 C</etc/bash-completion-f> (if running as root) or C<~/.bash-completion-f> (if
 running as normal user). This option sets another location.
 
-=item * B<id>* => I<str>
+=back
 
-Entry ID, for marker (usually command name).
+Return value:
+
+Returns an enveloped result (an array).
+
+First element (status) is an integer containing HTTP status code
+(200 means OK, 4xx caller error, 5xx function error). Second element
+(msg) is a string containing error message, or 'OK' if status is
+200. Third element (result) is optional, the actual result. Fourth
+element (meta) is called result metadata and is optional, a hash
+that contains extra information.
+
+ (any)
+
+
+=head2 remove_entries(%args) -> [status, msg, result, meta]
+
+Arguments ('*' denotes required arguments):
+
+=over 4
+
+=item * B<file> => I<str>
+
+Use alternate location for the bash-completion-f file.
+
+By default, the C<complete> scripts are put in a file either in
+C</etc/bash-completion-f> (if running as root) or C<~/.bash-completion-f> (if
+running as normal user). This option sets another location.
+
+=item * B<id>* => I<array>
+
+Entry ID(s).
 
 =back
 
