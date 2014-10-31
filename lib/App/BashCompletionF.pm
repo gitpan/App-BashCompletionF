@@ -1,7 +1,7 @@
 package App::BashCompletionF;
 
 our $DATE = '2014-10-31'; # DATE
-our $VERSION = '0.03'; # VERSION
+our $VERSION = '0.04'; # VERSION
 
 use 5.010001;
 use strict;
@@ -394,7 +394,6 @@ sub _add_pc {
 
                 $prog =~ $Text::Fragment::re_id or next;
 
-                say "Adding to bash-completion-f: $prog";
                 push @progs, $prog;
                 $added++;
                 $names{$prog}++;
@@ -414,6 +413,7 @@ sub _add_pc {
 
     my $envres = envresmulti();
     for my $prog (@progs) {
+        say "Adding to bash-completion-f: $prog";
         my $insres = Text::Fragment::insert_fragment(
             text=>$content, id=>$prog,
             payload=>"complete -C '$prog' '$prog'");
@@ -461,7 +461,7 @@ App::BashCompletionF - Backend for bash-completion-f script
 
 =head1 VERSION
 
-This document describes version 0.03 of App::BashCompletionF (from Perl distribution App-BashCompletionF), released on 2014-10-31.
+This document describes version 0.04 of App::BashCompletionF (from Perl distribution App-BashCompletionF), released on 2014-10-31.
 
 =head1 FUNCTIONS
 

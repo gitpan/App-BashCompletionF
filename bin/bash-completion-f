@@ -1,7 +1,7 @@
 #!perl
 
 our $DATE = '2014-10-31'; # DATE
-our $VERSION = '0.03'; # VERSION
+our $VERSION = '0.04'; # VERSION
 
 use 5.010;
 use strict;
@@ -38,7 +38,7 @@ bash-completion-f - Manage bash completion commands/scripts
 
 =head1 VERSION
 
-This document describes version 0.03 of bash-completion-f (from Perl distribution App-BashCompletionF), released on 2014-10-31.
+This document describes version 0.04 of bash-completion-f (from Perl distribution App-BashCompletionF), released on 2014-10-31.
 
 =head1 SYNOPSIS
 
