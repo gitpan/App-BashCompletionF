@@ -1,7 +1,7 @@
 package App::BashCompletionF;
 
-our $DATE = '2014-10-31'; # DATE
-our $VERSION = '0.04'; # VERSION
+our $DATE = '2014-11-01'; # DATE
+our $VERSION = '0.05'; # VERSION
 
 use 5.010001;
 use strict;
@@ -346,6 +346,8 @@ sub clean_entries {
 }
 
 sub _add_pc {
+    require Perinci::CmdLine::Util;
+
     my $opts = shift;
 
     my %args = @_;
@@ -376,25 +378,23 @@ sub _add_pc {
             say "DEBUG:Searching $dir ..." if $DEBUG;
             for my $prog (readdir $dh) {
                 next if $prog eq '.' || $prog eq '..';
-                (-f "$dir/$prog") && (-x _) or do { say "DEBUG:Skipping $prog (not an executable)" if $DEBUG; next };
                 $names{$prog} and next;
-
-                open my($fh), "<", "$dir/$prog" or do { say "DEBUG:Skipping $prog (can't read)" if $DEBUG; next };
-                read $fh, my($buf), 2; $buf eq '#!' or next;
-                # skip non perl
-                my $shebang = <$fh>; $shebang =~ /perl/ or do { say "DEBUG:Skipping $prog (not Perl script)" if $DEBUG; next };
-                my $found;
-                # skip unless we found something like 'use Perinci::CmdLine'
-                while (<$fh>) {
-                    if (/^\s*(use|require)\s+Perinci::CmdLine(|::Any|::Lite)/) {
-                        $found++; last;
-                    }
-                }
-                $found or do { say "DEBUG:Skipping $prog (no usage of Perinci::CmdLine)" if $DEBUG; next };
-
                 $prog =~ $Text::Fragment::re_id or next;
 
-                push @progs, $prog;
+                my $compprog;
+                my $detectres =
+                    Perinci::CmdLine::Util::detect_perinci_cmdline_script(
+                        script=>"$dir/$prog",
+                        include_noexec=>0,
+                        include_wrapper=>1);
+                $detectres->[0] == 200 or
+                    do { warn "Can't detect $prog: $detectres->[1], skipped"; next };
+                $detectres->[2] or
+                    do { say "DEBUG:Skipping $prog (".$detectres->[3]{'func.reason'}.")" if $DEBUG; next };
+                if ($detectres->[3]{'func.is_wrapper'}) {
+                    $compprog = $detectres->[3]{'func.wrapped'};
+                }
+                push @progs, {prog=>$prog, compprog=>$compprog//$prog};
                 $added++;
                 $names{$prog}++;
             }
@@ -403,7 +403,7 @@ sub _add_pc {
         for my $prog (@{ $opts->{progs} }) {
             $prog =~ s!.+/!!;
             $names{$prog} and next;
-            push @progs, $prog;
+            push @progs, {prog=>$prog, compprog=>$prog};
             $added++;
             $names{$prog}++;
         }
@@ -413,11 +413,12 @@ sub _add_pc {
 
     my $envres = envresmulti();
     for my $prog (@progs) {
-        say "Adding to bash-completion-f: $prog";
+        say "Adding to bash-completion-f: $prog->{prog}";
         my $insres = Text::Fragment::insert_fragment(
-            text=>$content, id=>$prog,
-            payload=>"complete -C '$prog' '$prog'");
-        $envres->add_result($insres->[0], $insres->[1], {item_id=>$prog});
+            text=>$content, id=>$prog->{prog},
+            payload=>"complete -C '$prog->{compprog}' '$prog->{prog}'");
+        $envres->add_result($insres->[0], $insres->[1],
+                            {item_id=>$prog->{prog}});
         next unless $insres->[0] == 200;
         $content = $insres->[2]{text};
     }
@@ -461,7 +462,7 @@ App::BashCompletionF - Backend for bash-completion-f script
 
 =head1 VERSION
 
-This document describes version 0.04 of App::BashCompletionF (from Perl distribution App-BashCompletionF), released on 2014-10-31.
+This document describes version 0.05 of App::BashCompletionF (from Perl distribution App-BashCompletionF), released on 2014-11-01.
 
 =head1 FUNCTIONS
 
